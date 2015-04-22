@@ -98,7 +98,7 @@ namespace bytesflops_pass {
                                          StringRef function_name,
                                          BasicBlock::iterator& iter,
                                          LLVMContext& bbctx,
-                                         DataLayout& target_data,
+                                         const DataLayout& target_data,
                                          BasicBlock::iterator& insert_before,
                                          int& must_clear) {
     // Increment the byte counter for load and store
@@ -373,7 +373,7 @@ namespace bytesflops_pass {
       // Perform per-basic-block variable initialization.
       BasicBlock& bb = *func_iter;
       LLVMContext& bbctx = bb.getContext();
-      DataLayout& target_data = getAnalysis<DataLayout>();
+      DataLayoutPass& target_data = getAnalysis<DataLayoutPass>();
       BasicBlock::iterator terminator_inst = bb.end();
       terminator_inst--;
       int must_clear = 0;   // Keep track of which counters we need to clear.
@@ -416,7 +416,7 @@ namespace bytesflops_pass {
           case Instruction::Load:
           case Instruction::Store:
             instrument_load_store(module, function_name, iter, bbctx,
-                                  target_data, terminator_inst, must_clear);
+                                  target_data.getDataLayout(), terminator_inst, must_clear);
             break;
 
           case Instruction::Call:
@@ -454,6 +454,43 @@ namespace bytesflops_pass {
       callinst_create(entry_func, argument, new_entry);
     }
     BranchInst::Create(&old_entry, new_entry);
+  }
+
+  // Add energy instrumentation calls to each function.
+  void BytesFlops::add_energy_instrumentation(Module* module, Function& function, 
+                                  StringRef function_name) {
+    BasicBlock* first_bb = function.begin();
+    Instruction* first_inst = first_bb->begin();
+    // Inject energy infrastructure initialization code if this is main.
+    if(function_name == "main"){
+      callinst_create(init_func, first_inst);
+    }
+
+    // Inject call to begin measuring energy.
+    callinst_create(push_func, first_inst);
+
+    UnifyFunctionExitNodes& unify_fn_exits = 
+      getAnalysis<UnifyFunctionExitNodes>();
+    BasicBlock* return_block = unify_fn_exits.getReturnBlock();
+    Instruction* return_inst = nullptr;
+    for(BasicBlock::iterator iter = return_block->begin(); 
+        iter != return_block->end(); iter++){
+      if(isa<ReturnInst>(&*iter)){
+        return_inst = &*iter;
+        break;
+      }
+    }
+    if(return_inst == nullptr){
+      return; // we can't do anything, so quit. this is probably wrong.
+    }
+    Constant* argument = map_func_name_to_arg(module, function_name);
+    callinst_create(pop_func, argument, return_inst);
+
+    // Inject shutdown code if this is main.
+    // This assumes we exit the program out of main, which may not be the case.
+    if(function_name == "main") {
+      callinst_create(shutdown_func, return_inst);
+    }
   }
 
 } // namespace bytesflops_pass

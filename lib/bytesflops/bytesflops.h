@@ -16,10 +16,12 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/PassManager.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/InstIterator.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -155,6 +157,10 @@ namespace bytesflops_pass {
     Function* tally_vector;      // Pointer to bf_tally_vector_operation()
     Function* reuse_dist_prog;   // Pointer to bf_reuse_dist_addrs_prog()
     Function* memset_intrinsic;  // Pointer to LLVM's memset() intrinsic
+    Function* init_func;         // Pointer to EAUDIT_init()
+    Function* push_func;         // Pointer to EAUDIT_push()
+    Function* pop_func;          // Pointer to EAUDIT_pop()
+    Function* shutdown_func;     // Pointer to EAUDIT_shutdown()
     StringMap<Constant*> func_name_to_arg;   // Map from a function name to an IR function argument
     set<string>* instrument_only;   // Set of functions to instrument; NULL=all
     set<string>* dont_instrument;   // Set of functions not to instrument; NULL=none
@@ -262,7 +268,7 @@ namespace bytesflops_pass {
                                StringRef function_name,
                                BasicBlock::iterator& iter,
                                LLVMContext& bbctx,
-                               DataLayout& target_data,
+                               const DataLayout& target_data,
                                BasicBlock::iterator& terminator_inst,
                                int& must_clear);
 
@@ -314,9 +320,14 @@ namespace bytesflops_pass {
                                 Type *data_type,
                                 int &must_clear);
 
+    // Add energy instrumentation to functions
+    void add_energy_instrumentation(Module* module, Function& function, 
+                                    StringRef function_name);
+
     // Indicate that we need access to DataLayout.
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-      AU.addRequired<DataLayout>();
+      AU.addRequired<DataLayoutPass>();
+      AU.addRequired<UnifyFunctionExitNodes>();
     }
 
   public:

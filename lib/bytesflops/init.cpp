@@ -16,6 +16,7 @@ namespace bytesflops_pass {
     LLVMContext& globctx = module.getContext();
     IntegerType* i64type = Type::getInt64Ty(globctx);
     PointerType* i64ptrtype = Type::getInt64PtrTy(globctx);
+    PointerType* i8ptrtype = Type::getInt8PtrTy(globctx);
 
     mem_insts_var      = declare_global_var(module, i64ptrtype, "bf_mem_insts_count", true);
     inst_mix_histo_var = declare_global_var(module, i64ptrtype, "bf_inst_mix_histo", true);
@@ -259,6 +260,20 @@ namespace bytesflops_pass {
       take_mega_lock = declare_thunk(&module, "_ZN10bytesflops20bf_acquire_mega_lockEv");
       release_mega_lock = declare_thunk(&module, "_ZN10bytesflops20bf_release_mega_lockEv");
     }
+    Type* voidtype = Type::getVoidTy(module.getContext());
+    init_func = cast<Function>(module.getOrInsertFunction("EAUDIT_init", 
+          voidtype, 
+          (Type*) 0));
+    push_func = cast<Function>(module.getOrInsertFunction("EAUDIT_push", 
+          voidtype,
+          (Type*) 0));
+    pop_func = cast<Function>(module.getOrInsertFunction("EAUDIT_pop", 
+          voidtype,
+          i8ptrtype,
+          (Type*) 0));
+    shutdown_func = cast<Function>(module.getOrInsertFunction("EAUDIT_shutdown", 
+          voidtype,
+          (Type*) 0));
     return true;
   }
 
@@ -295,6 +310,9 @@ namespace bytesflops_pass {
     // Instrument "interesting" instructions in every basic block.
     Module* module = function.getParent();
     instrument_entire_function(module, function, function_name);
+
+    // Add energy instrumentation
+    add_energy_instrumentation(module, function, function_name);
 
     // Return, indicating that we modified this function.
     return true;
